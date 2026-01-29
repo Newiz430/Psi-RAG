@@ -1,8 +1,10 @@
 #  ᛉ-RAG: Hierarchical Abstract Tree for Cross-Document Retrieval-Augmented Generation
 
-<img src="fig/psi-algiz-rune.png" alt="thorolf-wolfson-012-algiz-elhaz" style="zoom: 75%;" />
+<div align="center">
+<img src="fig/psi-algiz-rune.png" style="zoom: 30%;" />
+</div>
 
-<center><font color="#666666">Artwork by </font><a href="https://thorolfw.artstation.com/" style="color: #0366d6;">Thorolf Wolfson</a><font color="#666666">.</font></center>
+<!-- <center><font color="#666666">Artwork by </font><a href="https://thorolfw.artstation.com/" style="color: #0366d6;">Thorolf Wolfson</a><font color="#666666">.</font></center> -->
 
 ## Overview
 
