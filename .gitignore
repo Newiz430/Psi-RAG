@@ -1,0 +1,6 @@
+.history
+.vscode
+__pycache__
+log
+output/*
+!output/results/

@@ -1,0 +1,17 @@
+conf = {
+    "dataset": "multihoprag",
+    # "force_index_from_scratch": True,
+    "force_split": True,
+    "reorganize_leaf": True,
+    "abstract_type": "keyword",
+    "max_abs_length": 20,
+    "max_retrieval_time": 3, 
+    "tree_top_k": 10, 
+    # "force_qa_from_scratch": True,
+    "hybrid_search": True, 
+    "force_sparse_index_from_scratch": True,
+    "sparse_top_k": 10, 
+    "rerank": True,
+    "rerank_top_k": 5,
+    "rerank_name": "transformers:Qwen/Qwen3-Reranker-8B",
+}
