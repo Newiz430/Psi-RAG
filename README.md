@@ -31,6 +31,7 @@ You may first set some useful environment variables before running our code, inc
 ```sh
 # customize environment variables according to your own needs
 export CUDA_VISIBLE_DEVICES=0,1
+export HF_TOKEN=<your_hugging_face_token>
 export HF_ENDPOINT=https://hf-mirror.com	# Hugging Face mirror for users from China
 # APIs for closed-source LLMs
 export OPENAI_BASE_URL=<your_base_url>
@@ -57,7 +58,7 @@ dataset: str  					# Dataset name.
 data_dir: Path  				# Dataset directory, default to "./data"
 embed_name: str					# Model name for embedding documents and queries, "[PLATFORM]:[MODEL_NAME]"
 embed_cache_dir: Path			# Cache directory of the embedding model, default to os.environ["HF_HOME"]
-passage_as_tree: bool			# Whether to activate single-document retrieval setup,
+passage_as_tree: bool			# Whether to activate single-document retrieval setup.
 abs_name: str					# Model name for node abstraction, "[PLATFORM]:[MODEL_NAME_OR_PATH]"
 abs_cache_dir: Path				# Cache directory of the abstraction agent, default to os.environ["HF_HOME"].
 abstract_type: str				# Type of abstract. "summary" for summative text and "keyword" for keywords. 
@@ -114,16 +115,18 @@ If you want to reproduce our results, simply use our preset configurations named
 python main.py --config musique_summary
 ```
 
-We have provided our result files in `./output/results`. Simply run the command above to see evaluation results. If you want to reproduce from scratch, please set `"force_qa_from_scratch": True` in your config file (or set `"save_dir": None` for a single run). If a `<save_dir>` is specified, a new tree Pickle file will be saved after indexing, and a `bm25_<dataset>` directory containing the sparse index will be created in `<save_dir>`. When QA is finished, a result JSON file sharing a name with your config file willl be save in the `<save_dir>/results`. 
+We have provided our result files in `./output/results`. Simply run the command above to see evaluation results. 
+
+If you want to evaluate our tree index, please set `"force_qa_from_scratch": True` in your config file ~~to automatically download our tree indexes from 🤗Hugging Face to `<save_dir>`. You can also manually download them and put them into `<save_dir>`.~~ CURRENTLY NOT SUPPORTED DUE TO ANONYMITY. When QA is finished, a result JSON file (sharing a name with your config file) will be saved in the `<save_dir>/results`. 
+
+If you want to create a tree index from scratch, please set `"force_index_from_scratch": True` in your config file (or set `"save_dir": None` for a single run). If `<save_dir>` is specified, a new tree index file and a `bm25_<dataset>` directory containing the sparse index will be created in `<save_dir>`.
 
 :warning: Note that running indexing / sparse indexing / QA from scratch will cover your existing save files in `<save_dir>`!
 
 ## Upcoming functionality (after fully open-sourced)
 
-- [ ] Full result files & Pickle files for abstract trees
-
+- [x] Full result files & tree index files
 - [ ] Demos / Quick guide
-
 - [ ] Custom dataset / model code examples
 
 ## TODOs

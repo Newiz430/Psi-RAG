@@ -139,7 +139,7 @@ def get_unionfind_tree(node_embeddings: np.ndarray, partition_ratio: float = Non
 
     return uf.tree
 
-def get_unionfind_children(tree: List[int]) -> List[int]:
+def get_unionfind_children(tree: List[int]) -> Dict[int, List[int]]:
     children = {}
     for i, j in enumerate(tree):
         if j == -1:
@@ -159,7 +159,10 @@ class AbstractTreeBuilder(TreeBuilder):
         if "partition_ratio" not in self.conf:
             self.conf["partition_ratio"] = 1
 
-    def __rebalance(tree: List, children: List, keep_passage: bool = False) -> List:
+    def _rebalance(self, tree: List, 
+                   children: Dict[int, List[int]], 
+                   layer_to_node_indices: Dict[int, List[int]], 
+                   keep_passage: bool = False) -> List:
         """Tree rebalancing: reorganize nodes with too many children. """
         if self.conf["max_num_children"] is not None and self.conf["max_num_children"] > 1:
             layers = max(list(layer_to_node_indices.keys()))
@@ -195,7 +198,7 @@ class AbstractTreeBuilder(TreeBuilder):
                     children[node] = children[node][:split[1]]
         return children
 
-    def __construct_tree(
+    def _construct_tree(
         self,
         all_tree_nodes: Dict[int, Node],
         layer_to_node_indices: Dict[int, List[int]],
@@ -224,10 +227,10 @@ class AbstractTreeBuilder(TreeBuilder):
             node_indices_to_layer[parent_index] = child_layer + 1
         layer_to_node_indices = dict(sorted(layer_to_node_indices.items()))
 
-        children = self.__rebalance(tree, children)
+        children = self._rebalance(tree, children, layer_to_node_indices)
 
         tree_build_time = time.time() - tree_start_time
-        sum_start_time = time.time()
+        abs_start_time = time.time()
 
         # 2) Generate abstracts & create higher nodes
         bar = tqdm(range(len(children)), desc="generating abstracts")
@@ -257,16 +260,16 @@ class AbstractTreeBuilder(TreeBuilder):
         all_tree_nodes.update(current_level_nodes)
         
         root_layer = max(layer_to_node_indices.keys())
-        sum_end_time = time.time() - sum_start_time
+        abs_end_time = time.time() - abs_start_time
 
         logging.info(f"Tree building time: {tree_build_time:.2f}s")
-        logging.info(f"Summarization time: {sum_end_time:.2f}s")
+        logging.info(f"Abstraction time: {abs_end_time:.2f}s")
         print(f"Tree building time: {tree_build_time:.2f}s")
-        print(f"Summarization time: {sum_end_time:.2f}s")
+        print(f"Abstraction time: {abs_end_time:.2f}s")
 
         return {node_idx:current_level_nodes[node_idx] for node_idx in layer_to_node_indices[root_layer]}
 
-    def __construct_passage_tree(
+    def _construct_passage_tree(
         self,
         all_tree_nodes: Dict[int, Node],
         layer_to_node_indices: Dict[int, List[int]],
@@ -333,7 +336,7 @@ class AbstractTreeBuilder(TreeBuilder):
 
         # 4) Tree balancing: reorganize nodes with too many children
         # cunstruct_passage_tree deems the given passage layer (1) already balanced
-        children = self.__rebalance(tree, children, keep_passage=True)
+        children = self._rebalance(tree, children, keep_passage=True)
 
         # 5) Generate abstracts & create higher nodes
         for parent_index, children_indices in children.items():

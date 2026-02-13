@@ -62,7 +62,7 @@ class TreeRetriever:
         return self.conf["embed_model"].embed(text)
 
 
-    def __tree_retrieve(
+    def _tree_retrieve(
         self, current_nodes: List[Node], query: str, start_layer: int
     ) -> Tuple[List[Node], List[str], List[float]]:
 
@@ -131,7 +131,7 @@ class TreeRetriever:
         start_time = time.time()
 
         layer_nodes = [self.tree.all_nodes[idx] for idx in self.tree.layer_to_node_indices[self.conf["start_layer"]]]
-        retrieved_nodes, _, scores = self.__tree_retrieve(
+        retrieved_nodes, _, scores = self._tree_retrieve(
             layer_nodes, query, self.conf["start_layer"]
         )
         retrieved_node_indices = [node.index for node in retrieved_nodes]
@@ -139,7 +139,7 @@ class TreeRetriever:
 
         sparse_start_time = time.time()
         if self.conf["hybrid_search"] and self.hybrid_search_model is not None:
-            hybrid_node_indices = self.__hybrid_retrieve(query, self.conf["sparse_top_k"])
+            hybrid_node_indices = self._hybrid_retrieve(query, self.conf["sparse_top_k"])
         else:
             hybrid_node_indices = []
         sparse_time = time.time() - sparse_start_time
@@ -149,13 +149,17 @@ class TreeRetriever:
             # Reranking
             all_retrieved_docs = {self.tree.all_nodes[idx].text: self.tree.all_nodes[idx].index  
                                   for idx in retrieved_node_indices + hybrid_node_indices}
+            if self.conf["rerank_batch_size"] >= self.conf["rerank_top_k"]:
+                self.conf["rerank_batch_size"] = -1
             if self.conf["multithreading_qa_batch_size"] > 1:
                 with tokenizer_lock:
                     rerank_scores = self.conf["rerank_model"].rerank(query=query, 
-                                                                     documents=list(all_retrieved_docs.keys()))
+                                                                     documents=list(all_retrieved_docs.keys()),
+                                                                     batch_size=self.conf["rerank_batch_size"])
             else:
                 rerank_scores = self.conf["rerank_model"].rerank(query=query, 
-                                                                 documents=list(all_retrieved_docs.keys()))
+                                                                 documents=list(all_retrieved_docs.keys()),
+                                                                 batch_size=self.conf["rerank_batch_size"])
             final_node_indices = sorted(zip(all_retrieved_docs.values(), rerank_scores), 
                                         key=lambda x: x[1], 
                                         reverse=True)[:self.conf["rerank_top_k"]]
@@ -176,7 +180,7 @@ class TreeRetriever:
             final_nodes = [self.tree.all_nodes[idx] for idx in final_node_indices]
         rerank_time = time.time() - rerank_start_time
         
-        def __add_info(context, final_nodes):
+        def _add_info(context, final_nodes):
             '''Prepend extra info like chunk ID to mark relative positions. Used for summarization.'''
             for i in range(len(context)):
                 node = final_nodes[i]
@@ -188,7 +192,7 @@ class TreeRetriever:
             return context
         
         if self.conf["abstract_layer_as_context"] or self.conf["answer_type"] == "long":
-            context = __add_info(context, final_nodes)
+            context = _add_info(context, final_nodes)
 
         end_time = time.time()
 
@@ -222,7 +226,7 @@ class TreeRetriever:
             corpus_tokens = bm25s.tokenize(docs, stopwords="en", stemmer=self.stemmer, show_progress=False)
             self.hybrid_search_model.index(corpus_tokens)
 
-    def __hybrid_retrieve(self, query: str, top_k: int | str = 5) -> List[int]:
+    def _hybrid_retrieve(self, query: str, top_k: int | str = 5) -> List[int]:
         '''Retrieve chunks from the sparse keyword index. '''
         if self.hybrid_search_model is None:
             raise ValueError("There is no model for hybrid search.")

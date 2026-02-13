@@ -28,14 +28,14 @@ class RAG:
         self.qa_time: float = -1.
 
         if self.tree is not None:
-            self.__init_retrievers()
+            self._init_retrievers()
         else:
             self.retriever = None
 
         self.retrieve_count = 0
         self.time_dict = {'tree': 0.0, 'sparse': 0.0, 'rerank': 0.0}
 
-    def __init_retrievers(self):
+    def _init_retrievers(self):
         if isinstance(self.tree, List):
             self.retriever = [TreeRetriever(self.conf.copy(), tree) for tree in self.tree]
         else:
@@ -46,7 +46,7 @@ class RAG:
             self.tree, self.tb_time = self.tree_builder.build_index_list(docs=data.all_passages)
         else:
             self.tree, self.tb_time = self.tree_builder.build_index(docs=data.all_passages)
-        self.__init_retrievers()
+        self._init_retrievers()
 
     def build_vocab(self, data):
         if isinstance(self.retriever, List):
@@ -94,7 +94,7 @@ class RAG:
             with open(path, 'rb') as file:
                 setattr(self, name, pickle.load(file))
         if name == "tree":
-            self.__init_retrievers()
+            self._init_retrievers()
         logging.info(f"{name} successfully loaded to {path}")
 
     def find_ancestors(self, node_index):

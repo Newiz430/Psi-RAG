@@ -119,17 +119,30 @@ class TransformersRerankModel(BaseRerankModel):
             return input_tokens
 
         @torch.no_grad()
-        def compute_logits(inputs):
-            batch_scores = self.model(**inputs).logits[:, -1, :]
-            true_vector = batch_scores[:, token_true_id]
-            false_vector = batch_scores[:, token_false_id]
-            batch_scores = torch.stack([false_vector, true_vector], dim=1)
+        def compute_logits(inputs, batch_size=-1):
+
+            if batch_size > 0: 
+                batch_scores = []
+                for i in range(0, len(inputs["input_ids"]), batch_size):
+                    input = {'input_ids': inputs["input_ids"][i : i + batch_size], 
+                             'attention_mask': inputs["attention_mask"][i : i + batch_size]}
+                    batch_score = self.model(**input).logits[:, -1, :]
+                    true_vector = batch_score[:, token_true_id]
+                    false_vector = batch_score[:, token_false_id]
+                    batch_score = torch.stack([false_vector, true_vector], dim=1)
+                    batch_scores.append(batch_score)
+                batch_scores = torch.cat(batch_scores, dim=0).to(inputs["input_ids"].device)
+            else:
+                batch_scores = self.model(**inputs).logits[:, -1, :]
+                true_vector = batch_scores[:, token_true_id]
+                false_vector = batch_scores[:, token_false_id]
+                batch_scores = torch.stack([false_vector, true_vector], dim=1)
             batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
             scores = batch_scores[:, 1].exp().tolist()
             return scores
 
         inputs = process_inputs(pairs)
-        scores = compute_logits(inputs)
+        scores = compute_logits(inputs, batch_size=kwargs.get("batch_size", -1))
 
         return scores
 

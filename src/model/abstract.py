@@ -7,7 +7,7 @@ import ollama
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from transformers import T5Tokenizer, T5ForConditionalGeneration
-from .prompt import get_abs_template
+from ..prompt import get_abs_template
 
 logging.basicConfig(format="%(asctime)s - %(message)s", 
                     level=logging.INFO,
@@ -122,11 +122,11 @@ class TransformersAbstractModel(BaseAbstractModel):
     def abstract(self, text, **kwargs):
         self.load_model()
         if self.model_name in ("Voicelab/vlt5-base-keywords",):
-            return self.__abstract_vlt5(text, **kwargs)
+            return self._abstract_vlt5(text, **kwargs)
         else:
             raise NotImplementedError
 
-    def __abstract_vlt5(self, text, **kwargs):
+    def _abstract_vlt5(self, text, **kwargs):
         if isinstance(text, str):
             text = [text]
 

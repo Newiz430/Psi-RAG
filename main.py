@@ -4,6 +4,7 @@ import argparse
 from typing import List
 from tqdm import tqdm
 from threading import Lock
+from huggingface_hub import hf_hub_download
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from conf import read_config
@@ -94,23 +95,47 @@ def main():
         # ===================== 2) construct tree index =====================
         if conf["save_dir"] is not None:
             os.makedirs(conf["save_dir"], exist_ok=True)
-            save_tree_file = os.path.join(conf["save_dir"], 
-                                        f'{conf["dataset"]}_{conf["embed_name"].replace("/", "_")}'
-                                        f'_{conf["abs_name"].replace("/", "_")}_{conf["abstract_type"]}_tree.pkl')
-            if conf["force_index_from_scratch"] and os.path.exists(save_tree_file):
-                os.remove(save_tree_file)
-            if os.path.exists(save_tree_file):
-                TreeRAG.load("tree", save_tree_file)
-                tqdm.write(f"Loaded tree from pickle file \"{save_tree_file}\".")
-            else:
+            save_tree_file = (f'{conf["dataset"]}_{conf["embed_name"].replace("/", "_")}'
+                              f'_{conf["abs_name"].replace("/", "_")}_{conf["abstract_type"]}_tree.pkl')
+            save_tree_dir = os.path.join(conf["save_dir"], save_tree_file)
+            if conf["force_index_from_scratch"]:
+                tqdm.write(f"Constructing tree index...") 
+                if os.path.exists(save_tree_dir): 
+                    os.remove(save_tree_dir)
                 TreeRAG.add_documents(data)
-                TreeRAG.save("tree", save_tree_file)
-                tqdm.write(f"Saved tree to pickle file \"{save_tree_file}\".") 
+                TreeRAG.save("tree", save_tree_dir)
+                tqdm.write(f"Tree construction completed! Tree file saved to \"{save_tree_dir}\".") 
+            elif not os.path.exists(save_tree_dir):
+                tqdm.write(f"Downloading tree index file from Hugging Face...") 
+                try:
+                    raise NotImplementedError("Not supported due to anonymity!")
+                #     REPO_ID = "ANONYMOUS/REPO"
+                #     hf_hub_download(
+                #         repo_id=REPO_ID,
+                #         filename=save_tree_file.replace(":", "_"),
+                #         local_dir=conf["save_dir"]
+                #     )
+                #     TreeRAG.load("tree", save_tree_dir) 
+                #     tqdm.write(f"Downloading index completed! Tree file saved to \"{save_tree_dir}\".")     
+                except Exception as e:
+                    tqdm.write(f"⚠Downloading index failed as an exception occured: \n{e}\nConstructing tree index from scratch...") 
+                    TreeRAG.add_documents(data)
+                    TreeRAG.save("tree", save_tree_dir)
+                    tqdm.write(f"Tree construction completed! Tree file saved to \"{save_tree_dir}\".") 
+            else:
+                tqdm.write(f"Loading tree from existing index file \"{save_tree_dir}\"...")
+                TreeRAG.load("tree", save_tree_dir)
+                tqdm.write(f"Loading tree completed!")
+
         else:
+            tqdm.write(f"Constructing tree index...") 
             TreeRAG.add_documents(data)
+            tqdm.write(f"Tree construction completed!") 
         
         if conf["hybrid_search"]:
+            tqdm.write(f"Constructing sparse index (BM25)...") 
             TreeRAG.build_vocab(data)
+            tqdm.write(f"Sparse index construction completed!") 
 
         # =================== 3) retrieve & question answering ===================
 
@@ -221,6 +246,7 @@ def main():
             return query_id, answer, context, qa_time
         
         # QA with multithreading
+        tqdm.write(f"Answering questions...") 
         if conf["multithreading_qa_batch_size"] > 1:
             tokenizer_lock = Lock()
             # preload the model in case of multiple loading by threads
@@ -261,7 +287,8 @@ def main():
             },
         }
         if conf["save_dir"] is not None:
-            save_answers(conf, results)
+            ans_path = os.path.join(conf["save_dir"], "results")
+            save_answers(conf, results, ans_path)
         
         retrieval_stats = (f"Total times of retrieval: {TreeRAG.retrieve_count}\n"
             f"Average tree retrieval time: {TreeRAG.time_dict['tree'] / TreeRAG.retrieve_count:.4f}s\n"
@@ -272,6 +299,7 @@ def main():
         logger.writelines(retrieval_stats.splitlines())
 
     # ============================= 4) evaluation =============================
+    tqdm.write(f"Evaluating results...") 
     scores = evaluator.evaluate(answers=results.get("answers", None),
                                 retrieved_docs=results.get("retrieved_docs", None),
                                 metrics=conf["evaluation_metrics"])

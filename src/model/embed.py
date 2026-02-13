@@ -144,11 +144,11 @@ class TransformersEmbeddingModel(BaseEmbeddingModel):
     def embed(self, text, **kwargs):
         self.load_model()
         if self.model_name in ("facebook/contriever"):
-            return self.__embed_contriever(text, **kwargs)
+            return self._embed_contriever(text, **kwargs)
         elif self.model_name in ("nvidia/NV-Embed-v2"):
-            return self.__embed_nvidia(text, **kwargs)
+            return self._embed_nvidia(text, **kwargs)
 
-    def __embed_contriever(self, text, **kwargs):
+    def _embed_contriever(self, text, **kwargs):
         kwargs.setdefault("normalize", True)
         kwargs.setdefault("output_hidden_states", False)
 
@@ -157,7 +157,7 @@ class TransformersEmbeddingModel(BaseEmbeddingModel):
 
         return outputs
     
-    def __embed_nvidia(self, text: List[str], **kwargs):
+    def _embed_nvidia(self, text: List[str], **kwargs):
         
         if isinstance(text, str):
             text = [text]

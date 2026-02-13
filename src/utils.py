@@ -7,6 +7,7 @@ import numpy as np
 import tiktoken
 
 from typing import Dict, Tuple, List, Set
+from pathlib import Path
 from scipy import spatial
 from tqdm import tqdm
 
@@ -23,13 +24,13 @@ class Node:
     Represents a node in the hierarchical tree structure.
     """
 
-    def __init__(self, text: str, index: int, document_index: int, chunk_index: int, children: Set[int], embeddings: ndarray) -> None:
+    def __init__(self, text: str, index: int, document_index: int, chunk_index: int, children: Set[int], embeddings: np.ndarray) -> None:
         self.text: str = text
         self.index: int = index
         self.document_index: int = document_index
         self.chunk_index: int = chunk_index
         self.children: Set[int] = children
-        self.embeddings: ndarray = embeddings
+        self.embeddings: np.ndarray = embeddings
 
 
 class Tree:
@@ -349,8 +350,7 @@ def rrf(docs: List[List[str]], top_k: int = 5, k: int = 60) -> Tuple[List[str], 
     return list(node_scoring_sheet.keys())[:top_k], list(node_scoring_sheet.values())[:top_k]
 
 
-def save_answers(conf: Dict, results: Dict) -> None:
-    ans_path = os.path.join(conf["save_dir"], "results")
+def save_answers(conf: Dict, results: Dict, ans_path: Path) -> None:
     results["conf"] = repr(conf)
     if not os.path.exists(ans_path):
         os.makedirs(ans_path)
@@ -358,6 +358,7 @@ def save_answers(conf: Dict, results: Dict) -> None:
     with open(ans_file, "w") as f:
         json.dump(results, f)
     logging.info(f"QA results successfully saved to {ans_file}!")
+    tqdm.write(f"Question answering completed! Answer file saved to \"{ans_file}\".")
 
 
 def load_answers(conf: Dict) -> None | Tuple[List[str], List[List[str]]]:

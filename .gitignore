@@ -1,6 +1,5 @@
 .history
 .vscode
 __pycache__
+.pkl
 log
-output/*
-!output/results/

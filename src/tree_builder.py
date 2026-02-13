@@ -4,7 +4,7 @@ import time
 import tiktoken
 import numpy as np
 
-from abc import abstractclassmethod
+from abc import abstractmethod
 from itertools import chain
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Set, Tuple
@@ -96,6 +96,7 @@ class TreeBuilder:
         """Builds a tree for an entire corpus, optionally using multithreading."""
 
         logging.info("Creating Leaf Nodes")
+        tqdm.write(f"Creating node embeddings...") 
         
         passage_to_node_indices = {i:[] for i in range(len(docs))}
 
@@ -154,18 +155,20 @@ class TreeBuilder:
         layer_to_node_indices = {0: sorted(list(node.index for node in leaf_nodes.values()))}
 
         logging.info(f"Created {len(leaf_nodes)} Leaf Embeddings")
+        tqdm.write(f"Node embedding completed!") 
 
         logging.info("Building All Nodes")
+        tqdm.write(f"Building tree structure...") 
 
         all_nodes = copy.deepcopy(leaf_nodes)
 
         start_time = time.time()
         if self.conf["reorganize_leaf"] or isinstance(docs[0], str): 
-            root_nodes = self.__construct_tree(all_nodes, layer_to_node_indices, 
+            root_nodes = self._construct_tree(all_nodes, layer_to_node_indices, 
                                                use_multithreading=use_multithreading)
         else: 
             # use preset chunks if there is an explicit split instead of reorganizing leaves
-            root_nodes = self.__construct_passage_tree(all_nodes, layer_to_node_indices, passage_to_node_indices, 
+            root_nodes = self._construct_passage_tree(all_nodes, layer_to_node_indices, passage_to_node_indices, 
                                                      use_multithreading=use_multithreading)
         tree = Tree(all_nodes, root_nodes, leaf_nodes, layer_to_node_indices)
         end_time = time.time()
@@ -247,7 +250,7 @@ class TreeBuilder:
             all_nodes = copy.deepcopy(leaf_nodes)
 
             try:
-                root_nodes = self.__construct_tree(all_nodes, layer_to_node_indices, use_multithreading=use_multithreading)
+                root_nodes = self._construct_tree(all_nodes, layer_to_node_indices, use_multithreading=use_multithreading)
                 tree_list.append(Tree(all_nodes, root_nodes, leaf_nodes, layer_to_node_indices))
             except Exception as e:
                 print(e)
@@ -264,8 +267,8 @@ class TreeBuilder:
 
         return tree_list, end_time - start_time
 
-    @abstractclassmethod
-    def __construct_passage_tree(
+    @abstractmethod
+    def _construct_passage_tree(
         self,
         all_tree_nodes: Dict[int, Node],
         layer_to_node_indices: Dict[int, List[int]],
@@ -274,8 +277,8 @@ class TreeBuilder:
     ) -> Dict[int, Node]:
         pass
 
-    @abstractclassmethod
-    def __construct_tree(
+    @abstractmethod
+    def _construct_tree(
         self,
         all_tree_nodes: Dict[int, Node],
         layer_to_node_indices: Dict[int, List[int]],

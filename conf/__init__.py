@@ -134,12 +134,15 @@ class Config(TypedDict, total=False):
     # Model name for reranking, "[PLATFORM]:[MODEL_NAME_OR_PATH]"
     #   e.g., "transformers:Qwen/Qwen3-Reranker-8B", "transformers:BAAI/bge-reranker-large"
     rerank_name: str | None
-    # Cache directory of the reranking model, default to os.environ["HF_HOME"]
+    # Cache directory of the reranking model, default to os.environ["HF_HOME"].
     rerank_cache_dir: Path | None
-    # Number of final returned documents by the reranker if selection_mode="top_k"
+    # Number of final returned documents by the reranker if selection_mode="top_k".
     rerank_top_k: int | None
-    # Threshold for reranking score if selection_mode="threshold"
+    # Threshold for reranking score if selection_mode="threshold".
     rerank_threshold: float | None
+    # Batch size for the reranker. Should be smaller than rerank_top_k. 
+    #   Used only when Qwen3-Reranker-8B OOMs as this reranker does not support auto device mapping.
+    rerank_batch_size: int
 
     # ================================== Evaluation config ==================================
     # Set of evaluation metrics, ("em", "f1", "rouge", "recall", "answerrate")
@@ -208,6 +211,7 @@ conf = Config(
     rerank_cache_dir=None,
     rerank_top_k=5,
     rerank_threshold=None,
+    rerank_batch_size=-1,
 
     evaluation_metrics="all",
 
