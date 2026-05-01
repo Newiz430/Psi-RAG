@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Set, Tuple
 from tqdm import tqdm
 
-from .utils import Node, Tree
+from ..utils import Node, Tree
 
 logging.basicConfig(format="%(asctime)s - %(message)s", 
                     level=logging.INFO,
@@ -93,8 +93,6 @@ class TreeBuilder:
         return leaf_nodes, max(leaf_nodes.keys())
 
     def build_index(self, docs: List[str] | List[List[str]], use_multithreading: bool = True) -> Tuple[Tree, float]:
-        """Builds a tree for an entire corpus, optionally using multithreading."""
-
         logging.info("Creating Leaf Nodes")
         tqdm.write(f"Creating node embeddings...") 
         
@@ -102,12 +100,11 @@ class TreeBuilder:
 
         batch_embedding_models = ("nvidia/NV-Embed-v2",
                                   "Qwen/Qwen3-Embedding-8B",)
-                                #   "qwen3-embedding",) # TODO: turn this off until ollama supports batch embedding
 
         if self.conf["embed_model"].model_name in batch_embedding_models:
             leaf_nodes = {}
             if isinstance(docs[0], List):
-                print(f"Creating batched leaf nodes with {self.conf["embed_model"].model_name}...")
+                print(f"Creating batched leaf nodes with {self.conf['embed_model'].model_name}...")
                 embeddings = self.conf["embed_model"].embed(list(chain(*docs)))
                 max_idx = -1
                 for document_index, chunk in enumerate(docs):
@@ -115,7 +112,7 @@ class TreeBuilder:
                     passage_to_node_indices[document_index].extend([node.index for node in leaf_batch.values()])
                     leaf_nodes.update(leaf_batch)
             else:
-                print(f"Creating leaf nodes with {self.conf["embed_model"].model_name}...")
+                print(f"Creating leaf nodes with {self.conf['embed_model'].model_name}...")
                 embeddings = self.conf["embed_model"].embed(docs)
                 for index, text in enumerate(docs):
                     _, node = self.create_node(index, -1, index)
@@ -167,28 +164,25 @@ class TreeBuilder:
             root_nodes = self._construct_tree(all_nodes, layer_to_node_indices, 
                                                use_multithreading=use_multithreading)
         else: 
-            # use preset chunks if there is an explicit split instead of reorganizing leaves
-            root_nodes = self._construct_passage_tree(all_nodes, layer_to_node_indices, passage_to_node_indices, 
-                                                     use_multithreading=use_multithreading)
+            root_nodes = self._construct_tree_with_preset_chunks(all_nodes, 
+                                                                 layer_to_node_indices, 
+                                                                 passage_to_node_indices, 
+                                                                 use_multithreading=use_multithreading)
         tree = Tree(all_nodes, root_nodes, leaf_nodes, layer_to_node_indices)
         end_time = time.time()
 
         return tree, end_time - start_time
     
     def build_index_list(self, docs: List[str] | List[List[str]], use_multithreading: bool = True) -> Tuple[List[Tree], float]:
-        """Builds a tree for each input document, optionally using multithreading."""
-        
         logging.info("Creating Leaf Nodes")
 
         batch_embedding_models = ("nvidia/NV-Embed-v2",
                                   "Qwen/Qwen3-Embedding-8B",)
-                                #   "qwen3-embedding",) # TODO: turn this off until ollama supports batch embedding
 
         if self.conf["embed_model"].model_name in batch_embedding_models:
             leaf_nodes_list = []
             if isinstance(docs[0], List): 
-                # one tree per passage
-                print(f"Creating batched leaf nodes with {self.conf["embed_model"].model_name}...")
+                print(f"Creating batched leaf nodes with {self.conf['embed_model'].model_name}...")
                 for dataset_index, dataset_docs in enumerate(docs):
                     leaf_nodes_list.append({})
                     embeddings = self.conf["embed_model"].embed(dataset_docs)
@@ -198,8 +192,7 @@ class TreeBuilder:
                         node.embeddings = embeddings[index]
                         leaf_nodes_list[dataset_index][index] = node
             else: 
-                # one passage as a dataset (for demo)
-                print(f"Creating leaf nodes with {self.conf["embed_model"].model_name}...")
+                print(f"Creating leaf nodes with {self.conf['embed_model'].model_name}...")
                 leaf_nodes_list.append({})
                 embeddings = self.conf["embed_model"].embed(docs)
                 for index, text in enumerate(docs):
@@ -211,7 +204,6 @@ class TreeBuilder:
         else:
             if use_multithreading:
                 if isinstance(docs[0], List): 
-                    # one tree per passage
                     leaf_nodes_list = []
                     bar = tqdm(docs, desc="creating leaf nodes")
                     for dataset_index, dataset_docs in enumerate(bar):
@@ -220,12 +212,10 @@ class TreeBuilder:
                         leaf_nodes_list[dataset_index] = leaf_batch
                     bar.close()
                 else:
-                    # one passage as a dataset (for demo)
                     leaf_nodes, _ = self.multithreaded_create_leaf_nodes(docs, document_index=-1)
                     leaf_nodes_list = [leaf_nodes]
             else:
                 if isinstance(docs[0], List): 
-                    # one tree per passage
                     leaf_nodes_list = []
                     bar = tqdm(docs, desc="creating leaf nodes")
                     for dataset_index, dataset_docs in enumerate(bar):
@@ -233,7 +223,6 @@ class TreeBuilder:
                         leaf_nodes_list[dataset_index] = leaf_batch
                     bar.close()
                 else: 
-                    # one passage as a dataset (for demo)
                     leaf_nodes_list = [{}]
                     for index, text in enumerate(docs):
                         _, node = self.create_node(index, -1, index, text)
@@ -254,7 +243,7 @@ class TreeBuilder:
                 tree_list.append(Tree(all_nodes, root_nodes, leaf_nodes, layer_to_node_indices))
             except Exception as e:
                 print(e)
-                print("⚠An exception occured! Aborting tree construction and adding an empty root ...")
+                print("An exception occured! Aborting tree construction and adding an empty root ...")
                 index = max(set(leaf_nodes.keys())) + 1
                 _, root = self.create_node(index, text="[EMPTY]", children_indices=set(leaf_nodes.keys()))
                 all_nodes = copy.deepcopy(leaf_nodes)
@@ -268,21 +257,33 @@ class TreeBuilder:
         return tree_list, end_time - start_time
 
     @abstractmethod
-    def _construct_passage_tree(
-        self,
-        all_tree_nodes: Dict[int, Node],
-        layer_to_node_indices: Dict[int, List[int]],
-        passage_to_node_indices: Dict[int, List[int]],
-        use_multithreading: bool = False,
-    ) -> Dict[int, Node]:
-        pass
-
-    @abstractmethod
     def _construct_tree(
         self,
         all_tree_nodes: Dict[int, Node],
         layer_to_node_indices: Dict[int, List[int]],
         use_multithreading: bool = True,
     ) -> Dict[int, Node]:
+        """
+        Construct a tree index. 
+        """
         pass
 
+    @abstractmethod
+    def _construct_tree_with_preset_chunks(
+        self,
+        all_tree_nodes: Dict[int, Node],
+        layer_to_node_indices: Dict[int, List[int]],
+        passage_to_node_indices: Dict[int, List[int]],
+        use_multithreading: bool = False,
+    ) -> Dict[int, Node]:
+        """
+        Construct a tree index with preset chunks. 
+        This first generates abstract nodes for each group of chunks. 
+        Then, it constructs a tree structure based on the abstract nodes.
+        This is used instead of _construct_tree() when your documents 
+        have already been split into chunks with proper size 
+        and you want to keep the chunk groups in the tree.
+        If you want to reorganize the chunks, set conf["reorganize_leaf"] to True
+        and _construct_tree() will be called instead.
+        """
+        pass

@@ -2,14 +2,18 @@ from .embed import (BaseEmbeddingModel,
                     OpenAIEmbeddingModel, 
                     TransformersEmbeddingModel,
                     SentenceTransformersEmbeddingModel, 
-                    OllamaEmbeddingModel,)
+                    OllamaEmbeddingModel,
+                    VLLMEmbeddingModel,)
 from .abstract import (BaseAbstractModel, 
                        OpenAIAbstractModel, 
                        TransformersAbstractModel,
-                       OllamaAbstractModel,)
+                       OllamaAbstractModel,
+                       VLLMAbstractModel,)
 from .qa import (BaseQAModel,
                  OpenAIQAModel,
                  TransformersQAModel,
-                 OllamaQAModel,)
+                 OllamaQAModel,
+                 VLLMQAModel,)
 from .rerank import (BaseRerankModel,
-                     TransformersRerankModel,)
+                     TransformersRerankModel,
+                     VLLMRerankModel,)

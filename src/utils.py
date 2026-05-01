@@ -2,6 +2,7 @@ import logging
 import re
 import os
 import json
+import shutil
 import string
 import numpy as np
 import tiktoken
@@ -279,6 +280,70 @@ def get_token_length(text: str | List[str]) -> Dict:
     }
 
 
+def is_bucketed_tree(conf: Dict) -> bool:
+    return conf.get("bucket_size") is not None
+
+
+def sanitize_save_name(name: str) -> str:
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", name)
+    name = re.sub(r"\s+", " ", name).strip(" .")
+    return name
+
+
+def get_tree_save_name(conf: Dict) -> str:
+    prefix = (
+        f'{conf["dataset"]}_{conf["embed_name"].replace("/", "_")}'
+        f'_{str(conf["abs_name"]).replace("/", "_")}_{conf["abstract_type"]}'
+    )
+    tree_builder = conf.get("tree_builder", "exact")
+
+    if is_bucketed_tree(conf):
+        return sanitize_save_name(f"{prefix}_{tree_builder}_bucketed_tree")
+    if tree_builder != "exact":
+        return sanitize_save_name(f"{prefix}_{tree_builder}_tree.pkl")
+    return sanitize_save_name(f"{prefix}_tree.pkl")
+
+
+def remove_tree_target(path: str) -> None:
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def check_single_tree(tree) -> bool:
+    if not hasattr(tree, "root_nodes") or len(tree.root_nodes) != 1:
+        return False
+
+    root_node_index = next(iter(tree.root_nodes.keys()))
+    visited = set()
+    stack = [root_node_index]
+
+    while stack:
+        node_index = stack.pop()
+        if node_index in visited:
+            continue
+        visited.add(node_index)
+        stack.extend(list(tree.all_nodes[node_index].children))
+
+    return len(visited) == len(tree.all_nodes)
+
+
+def print_tree_check(tree) -> None:
+    if isinstance(tree, list):
+        is_connected = len(tree) > 0 and all(check_single_tree(t) for t in tree)
+        if is_connected:
+            tqdm.write(f"Tree check passed: all {len(tree)} trees are connected.")
+        else:
+            tqdm.write("Tree check failed.")
+        return
+
+    if check_single_tree(tree):
+        tqdm.write(f"Tree check passed: all {len(tree.all_nodes)} nodes are in one tree.")
+    else:
+        tqdm.write("Tree check failed.")
+
+
 def prototype_embeddings(embeddings, method='average'):
     if method == 'average':
         return np.mean(embeddings, axis=0)
@@ -350,28 +415,43 @@ def rrf(docs: List[List[str]], top_k: int = 5, k: int = 60) -> Tuple[List[str], 
     return list(node_scoring_sheet.keys())[:top_k], list(node_scoring_sheet.values())[:top_k]
 
 
-def save_answers(conf: Dict, results: Dict, ans_path: Path) -> None:
-    results["conf"] = repr(conf)
+def save_answers(conf: Dict, results: Dict, ans_path: Path, single_query: bool = False, verbose: bool = False) -> None:
+    if not single_query:
+        results["conf"] = repr(conf)
     if not os.path.exists(ans_path):
         os.makedirs(ans_path)
-    ans_file = os.path.join(ans_path, f"{conf["config"]}.json")
+    file_name = f"{conf['config']}_query.json" if single_query else f"{conf['config']}.json"
+    ans_file = os.path.join(ans_path, file_name)
     with open(ans_file, "w") as f:
         json.dump(results, f)
     logging.info(f"QA results successfully saved to {ans_file}!")
-    tqdm.write(f"Question answering completed! Answer file saved to \"{ans_file}\".")
+    if verbose:
+        tqdm.write(f"Question answering completed! Answer file saved to \"{ans_file}\".")
 
 
-def load_answers(conf: Dict) -> None | Tuple[List[str], List[List[str]]]:
-    ans_file = os.path.join(conf["save_dir"], "results", f"{conf["config"]}.json")
+def load_answers(conf: Dict, single_query: bool = False) -> None | Tuple[List[str], List[List[str]]] | Dict:
+    if conf["save_dir"] is None and single_query:
+        return {}
+
+    file_name = f"{conf['config']}_query.json" if single_query else f"{conf['config']}.json"
+    ans_file = os.path.join(conf["save_dir"], "results", file_name)
     if not os.path.exists(ans_file):
         logging.info("No answer file detected. Running from scratch.")
-        return None
+        return {} if single_query else None
     if conf["force_qa_from_scratch"]:
         logging.info("\"force_qa_from_scratch\" is on. Running from scratch.")
-        os.remove(ans_file)
-        return None
+        if not single_query:
+            os.remove(ans_file)
+            return None
+        return {}
     with open(ans_file, "r") as f:
         results = json.load(f)
+    if single_query:
+        if not isinstance(results, dict):
+            logging.info("Invalid result file.")
+            return {}
+        logging.info(f"QA results successfully loaded from {ans_file}!")
+        return results
     if not {"conf", "answers"}.issubset(results.keys()):
         logging.info("Invalid result file.")
         return None

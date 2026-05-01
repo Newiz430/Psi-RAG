@@ -41,7 +41,10 @@ class TreeRetriever:
                         self.conf["start_layer"] = layer
                         break
                 if self.conf["start_layer"] is None:
-                    raise ValueError(f"top k value ({self.conf["tree_top_k"]}) is larger than the number of leaf nodes ({len(self.tree.layer_to_node_indices[0])})")
+                    raise ValueError(
+                        f"top k value ({self.conf['tree_top_k']}) is larger than "
+                        f"the number of leaf nodes ({len(self.tree.layer_to_node_indices[0])})"
+                    )
         elif self.conf["start_layer"] > self.tree.num_layers:
             self.conf["start_layer"] = self.tree.num_layers
 
@@ -50,23 +53,28 @@ class TreeRetriever:
         self.stemmer = Stemmer.Stemmer("english")
         self.hybrid_search_model = bm25s.BM25() if self.conf["hybrid_search"] else None
         if self.hybrid_search_model is not None and self.conf["save_dir"] is not None:
-            hybrid_save_dir = os.path.join(self.conf["save_dir"], f"bm25_{self.conf["dataset"]}")
-            if self.conf["force_sparse_index_from_scratch"] and os.path.exists(hybrid_save_dir):
-                shutil.rmtree(hybrid_save_dir)
-            if os.path.exists(hybrid_save_dir): 
+            hybrid_save_dir = os.path.join(
+                self.conf["save_dir"],
+                f"bm25_{self.conf['dataset']}",
+            )
+            if os.path.exists(hybrid_save_dir) and not self.conf["force_sparse_index_from_scratch"]:
                 self.hybrid_search_model = self.hybrid_search_model.load(hybrid_save_dir, load_corpus=True)
                 logging.info(f"Loaded vocab from \"{hybrid_save_dir}\".")
-            os.makedirs(hybrid_save_dir, exist_ok=True)
     
     def embed(self, text: str) -> List[float]:
         return self.conf["embed_model"].embed(text)
 
 
     def _tree_retrieve(
-        self, current_nodes: List[Node], query: str, start_layer: int
+        self,
+        current_nodes: List[Node],
+        query: str,
+        start_layer: int,
+        query_embedding=None,
     ) -> Tuple[List[Node], List[str], List[float]]:
 
-        query_embedding = self.embed(query)
+        if query_embedding is None:
+            query_embedding = self.embed(query)
         
         selected_nodes = []
         node_list = current_nodes
@@ -120,6 +128,7 @@ class TreeRetriever:
         query: str,
         max_tokens: int = 3500,
         tokenizer_lock: Lock = None,
+        query_embedding=None,
     ) -> Tuple[List[str], List[Dict], float, Dict[str, float]]:
         
         if not isinstance(query, str):
@@ -132,7 +141,7 @@ class TreeRetriever:
 
         layer_nodes = [self.tree.all_nodes[idx] for idx in self.tree.layer_to_node_indices[self.conf["start_layer"]]]
         retrieved_nodes, _, scores = self._tree_retrieve(
-            layer_nodes, query, self.conf["start_layer"]
+            layer_nodes, query, self.conf["start_layer"], query_embedding=query_embedding
         )
         retrieved_node_indices = [node.index for node in retrieved_nodes]
         single_retrieval_time = time.time() - start_time
@@ -217,11 +226,15 @@ class TreeRetriever:
             return
         
         if self.conf["save_dir"] is not None:
-            hybrid_save_dir = os.path.join(self.conf["save_dir"], f"bm25_{self.conf["dataset"]}")
-            if os.path.exists(hybrid_save_dir): 
-                corpus_tokens = bm25s.tokenize(docs, stopwords="en", stemmer=self.stemmer, show_progress=False)
-                self.hybrid_search_model.index(corpus_tokens)
-                self.hybrid_search_model.save(hybrid_save_dir)
+            hybrid_save_dir = os.path.join(
+                self.conf["save_dir"],
+                f"bm25_{self.conf['dataset']}",
+            )
+            if self.conf["force_sparse_index_from_scratch"] and os.path.exists(hybrid_save_dir):
+                shutil.rmtree(hybrid_save_dir)
+            corpus_tokens = bm25s.tokenize(docs, stopwords="en", stemmer=self.stemmer, show_progress=False)
+            self.hybrid_search_model.index(corpus_tokens)
+            self.hybrid_search_model.save(hybrid_save_dir)
         else:
             corpus_tokens = bm25s.tokenize(docs, stopwords="en", stemmer=self.stemmer, show_progress=False)
             self.hybrid_search_model.index(corpus_tokens)

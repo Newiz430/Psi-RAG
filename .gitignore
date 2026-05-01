@@ -1,5 +1,10 @@
 .history
 .vscode
 __pycache__
-.pkl
+*.pkl
 log
+logs
+data/wiki18*
+output/*
+!output/results/
+!output/results/**

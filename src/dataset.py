@@ -1,9 +1,10 @@
 import os
 import json
 
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Set
 from tqdm import tqdm
 
+from .pdf import load_local_pdf_data
 from .utils import split_text
 
 dataset_pool = (
@@ -14,36 +15,30 @@ dataset_pool = (
     "2wikimultihopqa",
     "musique",
     "multihoprag",
-    "medical",
-    "novel",
     "infinitybench_longbook",
-    "hypertension",
-    "agriculture",
-    "cs",
-    "legal",
-    "mix",
     "qmsum",
     "wcep",
-    "booksum",
-    "govreport",
-    "squality",
 )
 
+
 class DataManager:
-    
+
     def __init__(self,
                  dataset_name: str, 
                  data_dir: str = "./data",
-                 test_samples: int = -1) -> None:
+                 test_samples: int = -1,
+                 local_pdf: str | None = None,
+                 **pdf_kwargs) -> None:
         
         self.dataset_name: str = dataset_name.lower()
-        if self.dataset_name not in dataset_pool:
+        self.local_pdf = local_pdf
+        if not self.local_pdf and self.dataset_name not in dataset_pool:
             raise NotImplementedError(f"Dataset {self.dataset_name} is currently not supported.")
 
         self.data: List[Dict] | None = None
         self.data_path: str | None = None 
-        self.corpus: str | List[str] | None = None
-        self.load_data(data_dir)
+        self.corpus: str | List[str] | List[Dict[str, Any]] | None = None
+        self.load_data(data_dir, **pdf_kwargs)
 
         # ------------------- FOR QA TESTING ONLY -------------------
         if test_samples > 0:
@@ -66,27 +61,31 @@ class DataManager:
         self.all_passages: List[str] | List[List[str]] = []
         self.preprocess()
 
-    def load_data(self, data_dir: str = "./data") -> None:
+    def load_data(self, data_dir: str = "./data", **pdf_kwargs) -> None:
         try:
-            if self.dataset_name in  ("hotpotqa", "2wikimultihopqa", "musique", 
-                                      "nq", "popqa", "multihoprag", "narrativeqa"):
+            if self.local_pdf:
+                self.data_path = str(data_dir)
+                self.data = load_local_pdf_data(data_dir, self.local_pdf, **pdf_kwargs)
+                self.corpus = None
+            elif self.dataset_name in  ("hotpotqa", "2wikimultihopqa", "musique", 
+                                        "nq", "popqa", "multihoprag", "narrativeqa"):
                 self.data_path = os.path.join(data_dir, self.dataset_name) + ".json"
                 corpus_path = os.path.join(data_dir, f"{self.dataset_name}_corpus") + ".json"
                 self.corpus = json.load(open(corpus_path, "r"))
                 self.data = json.load(open(self.data_path, "r"))
-            elif self.dataset_name in ("infinitybench_longbook"):
+            elif self.dataset_name in ("infinitybench_longbook",):
                 self.data_path = os.path.join(data_dir, self.dataset_name) + ".jsonl"
                 self.data = []
                 with open(self.data_path, 'rb') as file:
                     for line in file:
                         self.data.append(json.loads(line))
-            elif self.dataset_name in ("qmsum"):
+            elif self.dataset_name in ("qmsum",):
                 self.data_path = os.path.join(data_dir, self.dataset_name) + ".jsonl"
                 self.data = []
                 with open(self.data_path, 'r') as file:
                     for line in file:
                         self.data.append(json.loads(line))
-            elif self.dataset_name in ("wcep"):
+            elif self.dataset_name in ("wcep",):
                 self.data_path = os.path.join(data_dir, self.dataset_name) + ".txt"
                 self.data = []
                 with open(self.data_path, 'r') as file:
@@ -96,9 +95,15 @@ class DataManager:
             else:
                 raise NotImplementedError
         except FileNotFoundError:
+            if self.local_pdf:
+                raise
             raise FileNotFoundError(f"{self.data_path} not found.")
 
     def get_gold_docs(self) -> None:
+        """
+        Get supporting documents for retrieval evaluation. Depending on the dataset format, 
+        gold documents can be either a list of strings or a list of list of strings.
+        """
         for sample in self.data:
             gold_node_id = []
             if 'supporting_facts' in sample:  # hotpotqa, 2wikimultihopqa
@@ -143,6 +148,12 @@ class DataManager:
             self.gold_nodes_id.append(gold_node_id)
 
     def get_gold_answers(self) -> None:
+        """
+        Get ground-truth answers for QA evaluation.
+        If your custom dataset has 'answer' 'gold_ans' 'golden_answers' or 'reference' field, 
+        they will be automatically read as gold answers.
+        Otherwise, you may need to add a conditional branch to fit your dataset format.
+        """
         for sample in self.data:
             gold_ans = None
 
@@ -188,15 +199,20 @@ class DataManager:
         if self.dataset_name in ("narrativeqa", "infinitybench_longbook"):
             doc_dict: Dict[str, str|List[str]] = {}
 
+        # Read documents (passages) and ids. 
+        # Depending on the dataset format, passages can be either a list of strings 
+        # or a list of list of strings. This affects the subsequent `split_text()` process. 
+        # self.all_text_ids: List[str] contains all document ids.
+        # self.all_passages: List[str] or List[List[str]] contains all documents. 
         doc_idx = 0
         for sample_text in bar:
             if self.dataset_name in ('musique', 'hotpotqa', '2wikimultihopqa', 'nq', 'popqa'):
                 self.all_text_ids.append(str(doc_idx))
-                self.all_passages.append(sample_text['title'] + "\n" + sample_text['text'])   # List[List[str]]
-            if self.dataset_name in ("multihoprag"):
+                self.all_passages.append(sample_text['title'] + "\n" + sample_text['text'])
+            if self.dataset_name in ("multihoprag",):
                 self.all_text_ids.append(str(doc_idx))
-                self.all_passages.append(sample_text['title'] + "\n" + sample_text['body'])   # List[str]
-            elif self.dataset_name in ('qmsum'):
+                self.all_passages.append(sample_text['title'] + "\n" + sample_text['body'])
+            elif self.dataset_name in ('qmsum',):
                 def clean_qmsum_data(text: str) -> str:
                     text = text.replace('{vocalsound}', '')
                     text = text.replace('{disfmarker}', '')
@@ -212,44 +228,56 @@ class DataManager:
                 self.all_text_ids.append(str(doc_idx))
                 passage = "\n".join(["Speaker: " + i["speaker"] + "\n" + "Content: " + i["content"]
                                     for i in sample_text['meeting_transcripts']])
-                self.all_passages.append(clean_qmsum_data(passage))   # List[str]
-            elif self.dataset_name in ('wcep'):
+                self.all_passages.append(clean_qmsum_data(passage))
+            elif self.dataset_name in ('wcep',):
                 word_num = len(" ".join(sample_text["document"]).split())
                 if word_num <= 6000:
                     # self.all_queries = self.all_queries[:-1]
                     continue
-                self.all_passages.append(' '.join(sample_text["document"]))   # List[str]
+                self.all_passages.append(' '.join(sample_text["document"]))
                 self.all_queries.append("Summarize the contents of this news event.")
                 self.query_to_doc_ids.append(doc_idx)
-            elif self.dataset_name in ("narrativeqa"):
+            elif self.dataset_name in ("narrativeqa",):
                 doc_id = sample_text['idx'].split('_', maxsplit=1)[0]
                 if doc_id in doc_dict:
                     doc_dict[doc_id].append(sample_text['title'] + "\n" + sample_text['text'])
                 else:
-                    doc_dict[doc_id] = [sample_text['title'] + "\n" + sample_text['text']]   # List[List[str]]
-            elif self.dataset_name in ("infinitybench_longbook"):
+                    doc_dict[doc_id] = [sample_text['title'] + "\n" + sample_text['text']]
+            elif self.dataset_name in ("infinitybench_longbook",):
                 doc_id = sample_text['context'][:100]
-                doc_dict[doc_id] = sample_text['context']   # List[str]
-
+                doc_dict[doc_id] = sample_text['context']
+            elif self.local_pdf:
+                self.all_text_ids.append(sample_text["title"])
+                self.all_passages.append([
+                    sample_text["title"] + "\n" + chunk
+                    for chunk in sample_text["chunks"]
+                ])
+                
             doc_idx += 1
 
         if self.dataset_name in ("narrativeqa", "infinitybench_longbook"):
             self.all_text_ids = list(doc_dict.keys())
             self.all_passages = list(doc_dict.values())
         bar.close()
-                
+        
+        # Read user queries and map them to document ids. 
+        # If your custom dataset has 'query' or 'question' field, they will be automatically read.
+        # Otherwise, you may need to add a conditional branch to fit your dataset format.
+        # self.all_queries: List[str] contains all user queries. 
+        # self.query_to_doc_ids: List[int] contains the mapping from each query to the document index.
         bar = tqdm(self.data, desc="preprocessing query")
         for i, sample_text in enumerate(bar):
-            
-            if self.dataset_name in ('narrativeqa'):
+            if self.local_pdf:
+                break
+            elif self.dataset_name in ('narrativeqa',):
                 self.all_queries.append(sample_text['question'])
                 idx = self.all_text_ids.index(sample_text['document']['id'])
                 self.query_to_doc_ids.append(idx)
-            elif self.dataset_name in ('infinitybench_longbook'):
+            elif self.dataset_name in ('infinitybench_longbook',):
                 self.all_queries.append(sample_text['input'])
                 idx = self.all_text_ids.index(sample_text['context'][:100])
                 self.query_to_doc_ids.append(idx)
-            elif self.dataset_name in ('qmsum'):
+            elif self.dataset_name in ('qmsum',):
                 self.all_queries.append(sample_text['general_query_list'][0]['query'])
                 self.query_to_doc_ids.append(i)
             elif 'query' in sample_text:

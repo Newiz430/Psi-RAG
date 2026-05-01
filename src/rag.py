@@ -1,10 +1,17 @@
+import json
 import logging
 import pickle
-import json
 
-from typing import List, Dict
+from typing import Dict, List
 
-from .abstract_tree_builder import AbstractTreeBuilder
+from .tree_builder import (
+    AbstractTreeBuilder,
+    AbstractTreeBuilderBucketedExact,
+    AbstractTreeBuilderBucketedHNSW,
+    AbstractTreeBuilderHNSW,
+    load_tree_chunks,
+    save_tree_chunks,
+)
 from .tree_retriever import TreeRetriever
 from .utils import Tree
 
@@ -22,7 +29,7 @@ class RAG:
         self.conf: Dict = conf
         self.tree = tree
 
-        self.tree_builder = AbstractTreeBuilder(conf=self.conf)
+        self.tree_builder = self._init_tree_builder()
         self.tb_time: float = -1.
         self.tr_time: float = -1.
         self.qa_time: float = -1.
@@ -34,6 +41,28 @@ class RAG:
 
         self.retrieve_count = 0
         self.time_dict = {'tree': 0.0, 'sparse': 0.0, 'rerank': 0.0}
+
+    def _is_bucketed_tree(self) -> bool:
+        return self.conf.get("bucket_size") is not None
+
+    def _init_tree_builder(self):
+        tree_builder = self.conf.get("tree_builder", "exact")
+        if tree_builder not in ("exact", "hnsw"):
+            raise ValueError(
+                f'Unsupported tree_builder "{tree_builder}". Expected "exact" or "hnsw".'
+            )
+
+        if self._is_bucketed_tree():
+            builder_map = {
+                "exact": AbstractTreeBuilderBucketedExact,
+                "hnsw": AbstractTreeBuilderBucketedHNSW,
+            }
+        else:
+            builder_map = {
+                "exact": AbstractTreeBuilder,
+                "hnsw": AbstractTreeBuilderHNSW,
+            }
+        return builder_map[tree_builder](conf=self.conf)
 
     def _init_retrievers(self):
         if isinstance(self.tree, List):
@@ -67,7 +96,7 @@ class RAG:
         else:
             retrieved_documents, layer_information, self.tr_time, time_dict = self.retriever.retrieve(question, **kwargs)
 
-        for k,v in time_dict.items():
+        for k, v in time_dict.items():
             self.time_dict[k] += v
 
         return retrieved_documents, layer_information
@@ -78,7 +107,13 @@ class RAG:
     def save(self, name, path, is_json=False):
         if not hasattr(self, name) or getattr(self, name) is None:
             raise ValueError("There is nothing to save.")
-        if is_json:
+        if name == "tree" and not is_json and self._is_bucketed_tree():
+            save_tree_chunks(
+                getattr(self, name),
+                path,
+                chunk_size=int(self.conf.get("tree_save_chunk_size", 200000)),
+            )
+        elif is_json:
             with open(path, "w") as file:
                 json.dump(getattr(self, name), file)
         else:
@@ -87,7 +122,9 @@ class RAG:
         logging.info(f"{name} successfully saved to {path}")
 
     def load(self, name, path, is_json=False):
-        if is_json:
+        if name == "tree" and not is_json and self._is_bucketed_tree():
+            setattr(self, name, load_tree_chunks(path))
+        elif is_json:
             with open(path, "r") as file:
                 setattr(self, name, json.load(file))
         else:
@@ -101,7 +138,7 @@ class RAG:
         if self.tree is None:
             raise ValueError("There is no tree to search.")
         
-        if isinstance(node_index, tuple): # document_index:chunk_index
+        if isinstance(node_index, tuple):
             for node in self.tree.all_nodes.values():
                 if node.document_index == node_index[0] and node.chunk_index == node_index[1]:
                     node_index = node.index

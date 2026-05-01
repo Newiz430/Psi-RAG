@@ -96,19 +96,60 @@ class SentenceTransformersEmbeddingModel(BaseEmbeddingModel):
 
 
 class OllamaEmbeddingModel(BaseEmbeddingModel):
-    def __init__(self, model_name="qwen3", **kwargs):
+    def __init__(self, model_name="qwen3", cache_dir=None, **kwargs):
         """
         Args:
             model_name (str): qwen3-embedding:latest, 
         """
         self.model_name = model_name
+        self.cache_dir = cache_dir
+        self.model_kwargs = kwargs
+        self.dimensions = self.model_kwargs.pop("dimensions", None)
     
     def embed(self, text):
-        embs = ollama.embed(model=self.model_name, 
-                            input=text,
-                            keep_alive='10m',
-                            ).embeddings[0]
+        params = {
+            "input": text,
+            "options": self.model_kwargs,
+            "model": self.model_name,
+            "keep_alive": '10m',
+        }
+        if self.dimensions is not None:
+            params["dimensions"] = self.dimensions
+        embs = ollama.embed(**params).embeddings[0]
         return embs
+
+
+class VLLMEmbeddingModel(BaseEmbeddingModel):
+    def __init__(self, model_name="Qwen/Qwen3-Embedding-8B", cache_dir=None, **kwargs):
+        self.model_name = model_name
+        self.model = None
+        self.cache_dir = cache_dir
+        self.model_kwargs = kwargs
+        self.dimensions = self.model_kwargs.pop("dimensions", None)
+
+    def load_model(self):
+        if self.model is None:
+            try:
+                from vllm import LLM
+            except ImportError as e:
+                raise ImportError("vllm is not installed.") from e
+
+            init_kwargs = self.model_kwargs.copy()
+            if self.cache_dir is not None:
+                init_kwargs["download_dir"] = self.cache_dir
+            self.model = LLM(model=self.model_name, task="embed", **init_kwargs)
+
+    def embed(self, text):
+        self.load_model()
+
+        embed_kwargs = {}
+        if self.dimensions is not None:
+            embed_kwargs["dimensions"] = self.dimensions
+
+        embs = [output.outputs.embedding for output in self.model.embed(text, **embed_kwargs)]
+        if isinstance(text, str):
+            return embs[0]
+        return np.asarray(embs)
 
 
 class TransformersEmbeddingModel(BaseEmbeddingModel):
@@ -120,6 +161,7 @@ class TransformersEmbeddingModel(BaseEmbeddingModel):
         """
         self.model_name = model_name
         self.model = None
+        self.model_kwargs = kwargs
         self.tokenizer = None
         self.cache_dir = cache_dir
         if self.model_name in ("nvidia/NV-Embed-v2"):
@@ -132,10 +174,12 @@ class TransformersEmbeddingModel(BaseEmbeddingModel):
                 'device_map': "auto",  # added this line to use multiple GPUs
                 "torch_dtype": "auto",
             }
+            model_kwargs = self.model_kwargs.copy()
+            model_kwargs.update(model_init_params)
             self.model = AutoModel.from_pretrained(self.model_name, 
                                                    mirror=os.environ["HF_ENDPOINT"], 
                                                    cache_dir=self.cache_dir,
-                                                   **model_init_params)
+                                                   **model_kwargs)
         if self.tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, 
                                                            mirror=os.environ["HF_ENDPOINT"],
