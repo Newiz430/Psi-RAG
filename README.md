@@ -1,11 +1,9 @@
 # ᛉ-RAG: Hierarchical Abstract Tree for Cross-Document Retrieval-Augmented Generation
 
 <div align="center">
-<img src="fig/psi-algiz-rune.png" style="zoom: 15%;" />
-<br />
-<span style="color: #666666;">Artwork by </span>
-<a href="https://thorolfw.artstation.com/" style="color: #0366d6;">Thorolf Wolfson</a>
-<span style="color: #666666;">.</span>
+  <img src="fig/psi-algiz-rune.png" width="300" />
+  <br />
+  Artwork by <a href="https://thorolfw.artstation.com/">Thorolf Wolfson</a>.
 </div>
 
 <br>
@@ -66,7 +64,7 @@ pip install -r requirements.txt
 Optional packages:
 
 - Add `pip install vllm` if you prefer vLLM.
-- Add `pip isntall transformers==4.46.0` for the embedding model "nvidia/NV-Embed-V2" (indexing only).
+- Add `pip install transformers==4.46.0` for the embedding model "nvidia/NV-Embed-V2" (indexing only).
 - Add `pip install mineru[all]` if you want to build custom indexes with your local PDF files.
 - Add `pip install py7zr` or `pip install rarfile` if you want to upload a .7z or .rar package of local PDF files.
 
