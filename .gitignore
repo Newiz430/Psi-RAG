@@ -4,6 +4,7 @@ __pycache__
 *.pkl
 log
 logs
+conf/custom_conf.py
 data/wiki18*
 output/*
 !output/results/
